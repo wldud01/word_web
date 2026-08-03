@@ -9,7 +9,6 @@ export const MRI_PATIENT = {
 
 export function computePixelStats(data) {
   let min = Infinity, max = -Infinity, sum = 0, count = 0;
-  const histogram = new Array(64).fill(0); // 0-255 → 64 bins
 
   for (let i = 0; i < data.length; i++) {
     const v = data[i];
@@ -18,8 +17,6 @@ export function computePixelStats(data) {
     if (v > max) max = v;
     sum += v;
     count++;
-    const bin = Math.min(63, Math.floor((v / 255) * 63));
-    histogram[bin]++;
   }
 
   const mean = count > 0 ? sum / count : 0;
@@ -36,9 +33,5 @@ export function computePixelStats(data) {
     max: Math.round(max === -Infinity ? 0 : max),
     mean: Math.round(mean),
     std: Math.round(std),
-    histogram: histogram.map((v, i) => ({
-      val: Math.round((i / 63) * 255),
-      count: v,
-    })),
   };
 }

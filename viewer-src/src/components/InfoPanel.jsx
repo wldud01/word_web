@@ -1,19 +1,11 @@
 import React, { useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { computePixelStats } from '../lib/mockData';
-
-const LABEL = { fontSize: 10, fill: '#aaa' };
 
 export default function InfoPanel({ patient, sliceIndex, sliceData }) {
   const stats = useMemo(() => {
     if (!sliceData) return null;
     return computePixelStats(sliceData.data);
   }, [sliceData]);
-
-  const histData = useMemo(() => {
-    if (!stats) return [];
-    return stats.histogram.filter((_, i) => i % 2 === 0);
-  }, [stats]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0f0f1f', borderRight: '1px solid #2a2a4a', width: 220 }}>
@@ -25,29 +17,6 @@ export default function InfoPanel({ patient, sliceIndex, sliceData }) {
         <div style={row}><span style={lbl}>Modality</span><span style={val}>{patient.modality}</span></div>
         <div style={row}><span style={lbl}>총 슬라이스</span><span style={val}>{patient.sliceCount}</span></div>
         <div style={row}><span style={lbl}>두께</span><span style={val}>{patient.sliceThickness} mm</span></div>
-      </div>
-
-      {/* Histogram */}
-      <div style={{ padding: '10px 8px', borderBottom: '1px solid #2a2a4a', flex: '0 0 auto' }}>
-        <div style={{ color: '#ce93d8', fontSize: 12, fontWeight: 'bold', marginBottom: 6 }}>픽셀 값 분포</div>
-        <div style={{ fontSize: 10, color: '#888', marginBottom: 4 }}>범위: 0 ~ 255 (배경 제외)</div>
-        <ResponsiveContainer width="100%" height={120}>
-          <BarChart data={histData} margin={{ top: 0, right: 0, left: -28, bottom: 0 }}>
-            <XAxis
-              dataKey="val"
-              tick={LABEL}
-              tickFormatter={v => v === 0 || v === 128 || v === 255 ? v : ''}
-              interval={9}
-            />
-            <YAxis tick={LABEL} />
-            <Tooltip
-              contentStyle={{ background: '#1a1a2e', border: '1px solid #ce93d8', fontSize: 11 }}
-              formatter={(v, n, p) => [v, `val ${p.payload.val}`]}
-              labelFormatter={() => ''}
-            />
-            <Bar dataKey="count" fill="#ce93d8" opacity={0.8} isAnimationActive={false} />
-          </BarChart>
-        </ResponsiveContainer>
       </div>
 
       {/* Slice stats */}

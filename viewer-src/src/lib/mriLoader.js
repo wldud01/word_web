@@ -1,5 +1,3 @@
-import { apiUrl } from './api';
-
 // { data: Int16Array, width, height } → PNG Blob (서버 POST용)
 export function sliceToBlob(slice) {
   return new Promise((resolve) => {
@@ -54,18 +52,19 @@ export async function loadMRISlice(url) {
   return { data, width: img.width, height: img.height };
 }
 
-// Load all MRI slices from server with progress callback
-// onProgress(done, total, partialSlices)
-export async function loadAllMRISlices(onProgress) {
-  const res = await fetch(apiUrl('/api/mri-slices'));
-  if (!res.ok) throw new Error('MRI 슬라이스 목록을 불러올 수 없어요 (추론 서버가 실행 중인지 확인)');
-  const { files } = await res.json();
-
+// 로컬에서 업로드한 File[] → 슬라이스 배열. onEach()는 파일 하나 처리할 때마다 호출.
+export async function loadFilesAsSlices(files, onEach) {
   const slices = [];
-  for (let i = 0; i < files.length; i++) {
-    const slice = await loadMRISlice(apiUrl(`/mri/${files[i]}`));
-    slices.push(slice);
-    onProgress?.(i + 1, files.length, slices);
+  for (const file of files) {
+    const url = URL.createObjectURL(file);
+    try {
+      slices.push(await loadMRISlice(url));
+    } catch {
+      // 손상된 파일은 건너뜀
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    onEach?.();
   }
   return slices;
 }

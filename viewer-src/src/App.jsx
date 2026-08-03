@@ -3,23 +3,26 @@ import SlicePanel from './components/SlicePanel';
 import InfoPanel from './components/InfoPanel';
 import CTImageViewer from './components/CTImageViewer';
 import VolumeRenderer3D from './components/VolumeRenderer3D';
-import { loadAllMRISlices, loadSliceFromBlob, sliceToBlob } from './lib/mriLoader';
+import FolderUpload from './components/FolderUpload';
+import { loadFilesAsSlices, loadSliceFromBlob, sliceToBlob } from './lib/mriLoader';
+import { classifyByModality, filesFromDataTransferItems, folderNameFromFiles } from './lib/patientFolder';
 import { MRI_PATIENT } from './lib/mockData';
 import { apiUrl } from './lib/api';
 
-// 참고: patient_mri/p1의 슬라이스는 원래 T2 PNG지만, 진짜 T1 원본이 준비되기
-// 전까지 "T1 원본" 자리표시자로 쓰고 있다. 예측 체크포인트도 마찬가지로
-// 자리표시자(T2→T1용으로 학습된 것)이며, 실제 T1→T2 체크포인트로 교체 예정이다.
+// 참고: 예측 체크포인트는 현재 자리표시자(원래 T2→T1용으로 학습된 것)이며,
+// 실제 T1→T2 체크포인트로 교체 예정이다.
 
 export default function App() {
-  const [slices, setSlices]             = useState([]);
+  const [t1Slices, setT1Slices]         = useState([]); // 원본 T1
+  const [t2Slices, setT2Slices]         = useState([]); // 원본 T2 (ground truth)
   const [currentIndex, setCurrentIndex] = useState(0);
   const [cursorInfo, setCursorInfo]     = useState(null);
   const [loadProgress, setLoadProgress] = useState(0);
-  const [loading, setLoading]           = useState(true);
+  const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState(null);
+  const [patientName, setPatientName]   = useState('');
 
-  // 밝기/대비 — 두 패널이 공유
+  // 밝기/대비 — 패널 전체가 공유
   const [wc, setWc] = useState(128);
   const [ww, setWw] = useState(256);
   const handleWcWwChange = useCallback((nwc, nww) => { setWc(nwc); setWw(nww); }, []);
@@ -33,7 +36,6 @@ export default function App() {
   const predCancelRef = useRef(false);
 
   // 모델 상태 폴링
-  const [modelReady, setModelReady] = useState(false);
   const [modelError, setModelError] = useState(null);
   const modelReadyRef  = useRef(false);
   const modelErrorRef  = useRef(null);
@@ -46,7 +48,6 @@ export default function App() {
         if (res.ok) {
           const data = await res.json();
           if (data.model_ready) {
-            setModelReady(true);
             modelReadyRef.current = true;
             clearInterval(modelPollRef.current);
           } else if (data.model_error) {
@@ -62,27 +63,42 @@ export default function App() {
     return () => clearInterval(modelPollRef.current);
   }, []);
 
-  // 환자 p1 슬라이스를 서버에서 자동 로드
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const loaded = await loadAllMRISlices((done, total) => {
-          if (!cancelled) setLoadProgress(Math.round((done / total) * 100));
-        });
-        if (!cancelled) setSlices(loaded);
-      } catch (e) {
-        if (!cancelled) setError(e.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
+  // 업로드된 File[] → T1/T2로 분류 후 로드
+  const loadPatientFiles = useCallback(async (files) => {
+    const { t1, t2 } = classifyByModality(files);
+    if (t1.length === 0 && t2.length === 0) {
+      setError('T1/T2로 인식되는 PNG·JPG 파일을 찾지 못했어요 (파일명에 t1 또는 t2가 포함되어야 함)');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setCurrentIndex(0);
+    setPredSlices([]);
+    setPredStatus('idle');
+    setPredProgress(0);
+    setPredFailCount(0);
+    setPatientName(folderNameFromFiles(files) || '업로드된 환자');
+
+    const total = t1.length + t2.length || 1;
+    let done = 0;
+    const tick = () => { done++; setLoadProgress(Math.round((done / total) * 100)); };
+
+    try {
+      const [t1Loaded, t2Loaded] = await Promise.all([
+        loadFilesAsSlices(t1, tick),
+        loadFilesAsSlices(t2, tick),
+      ]);
+      setT1Slices(t1Loaded);
+      setT2Slices(t2Loaded);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const sliceCount = slices.length || MRI_PATIENT.sliceCount;
+  const sliceCount = Math.max(t1Slices.length, t2Slices.length);
 
   const navigate = useCallback((delta) => {
     setCurrentIndex(i => Math.max(0, Math.min(sliceCount - 1, i + delta)));
@@ -99,14 +115,26 @@ export default function App() {
   }, [handleKeyDown]);
 
   const handleWheel = useCallback((e) => {
+    if (sliceCount === 0) return;
     e.preventDefault();
     navigate(e.deltaY > 0 ? 1 : -1);
-  }, [navigate]);
+  }, [navigate, sliceCount]);
 
-  // 예측 버튼 → 전체 슬라이스 T1→T2 추론
+  // 중앙 영역에 폴더를 직접 드래그&드롭
+  const [dragOver, setDragOver] = useState(false);
+  const onCenterDragOver = useCallback((e) => { e.preventDefault(); setDragOver(true); }, []);
+  const onCenterDragLeave = useCallback(() => setDragOver(false), []);
+  const onCenterDrop = useCallback(async (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = await filesFromDataTransferItems(e.dataTransfer.items);
+    if (files.length > 0) loadPatientFiles(files);
+  }, [loadPatientFiles]);
+
+  // 예측 버튼 → T1 전체 슬라이스에 대해 T1→T2 추론
   const runPrediction = useCallback(async () => {
     if (predStatus === 'model_loading' || predStatus === 'predicting') return;
-    if (slices.length === 0) return;
+    if (t1Slices.length === 0) return;
     predCancelRef.current = false;
 
     if (!modelReadyRef.current && !modelErrorRef.current) {
@@ -127,7 +155,7 @@ export default function App() {
     setPredProgress(0);
     setPredFailCount(0);
 
-    const total = slices.length;
+    const total = t1Slices.length;
     const results = new Array(total).fill(null);
     setPredSlices([...results]);
 
@@ -135,7 +163,7 @@ export default function App() {
     for (let i = 0; i < total; i++) {
       if (predCancelRef.current) break;
       try {
-        const pngBlob = await sliceToBlob(slices[i]);
+        const pngBlob = await sliceToBlob(t1Slices[i]);
         const res = await fetch(apiUrl('/api/infer-t1'), {
           method: 'POST',
           headers: { 'Content-Type': 'image/png' },
@@ -153,11 +181,15 @@ export default function App() {
       }
     }
     if (!predCancelRef.current) setPredStatus(failCount === total ? 'error' : 'done');
-  }, [slices, predStatus]);
+  }, [t1Slices, predStatus]);
 
   const predPending = (predStatus === 'model_loading' || predStatus === 'predicting') && !predSlices[currentIndex];
   const predFailedSlice = (predStatus === 'done' || predStatus === 'error') && !predSlices[currentIndex];
-  const predictDisabled = loading || slices.length === 0 || predStatus === 'model_loading' || predStatus === 'predicting';
+  const predictDisabled = loading || t1Slices.length === 0 || predStatus === 'model_loading' || predStatus === 'predicting';
+  const hasAnyData = t1Slices.length > 0 || t2Slices.length > 0;
+
+  // 썸네일/정보/3D는 T1을 기준으로 하되, T1이 없으면 T2로 대체
+  const refSlices = t1Slices.length > 0 ? t1Slices : t2Slices;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0a0a1a', color: '#e0e0e0', overflow: 'hidden' }}>
@@ -166,7 +198,9 @@ export default function App() {
       <div style={{ height: 44, background: '#0d0d22', borderBottom: '1px solid #2a2a4a', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 16, flexShrink: 0 }}>
         <span style={{ color: '#ce93d8', fontWeight: 'bold', fontSize: 15, letterSpacing: 1 }}>MRI T1→T2 뷰어</span>
         <span style={{ color: '#555', fontSize: 11 }}>|</span>
-        <span style={{ color: '#aaa', fontSize: 12 }}>{MRI_PATIENT.id}</span>
+        <span style={{ color: '#aaa', fontSize: 12 }}>{patientName || '환자 미선택'}</span>
+
+        <FolderUpload onFilesSelected={loadPatientFiles} disabled={loading} />
 
         <button
           onClick={runPrediction}
@@ -177,7 +211,6 @@ export default function App() {
             color: predictDisabled ? '#555' : '#ce93d8',
             border: `1px solid ${predictDisabled ? '#2a2a3a' : '#7a3a9a'}`,
             borderRadius: 4, cursor: predictDisabled ? 'default' : 'pointer',
-            marginLeft: 8,
           }}
         >
           T2 예측 실행
@@ -196,17 +229,17 @@ export default function App() {
         )}
         {predStatus === 'predicting' && (
           <span style={{ color: '#ce93d8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-            T2 예측 중... {predProgress}/{slices.length}
+            T2 예측 중... {predProgress}/{t1Slices.length}
             {predFailCount > 0 && <span style={{ color: '#f87171' }}>({predFailCount}개 실패)</span>}
             <span style={{ display: 'inline-block', width: 80, height: 4, background: '#2a2a4a', borderRadius: 2 }}>
-              <span style={{ display: 'block', width: `${(predProgress / slices.length) * 100}%`, height: '100%', background: '#ce93d8', borderRadius: 2, transition: 'width 0.3s' }} />
+              <span style={{ display: 'block', width: `${(predProgress / t1Slices.length) * 100}%`, height: '100%', background: '#ce93d8', borderRadius: 2, transition: 'width 0.3s' }} />
             </span>
           </span>
         )}
         {predStatus === 'done' && (
           predFailCount === 0
-            ? <span style={{ color: '#81c784', fontSize: 11 }}>T2 예측 완료 ✓ ({slices.length}장)</span>
-            : <span style={{ color: '#ffcc80', fontSize: 11 }}>T2 예측 부분 완료 — {slices.length - predFailCount}장 성공 / {predFailCount}장 실패</span>
+            ? <span style={{ color: '#81c784', fontSize: 11 }}>T2 예측 완료 ✓ ({t1Slices.length}장)</span>
+            : <span style={{ color: '#ffcc80', fontSize: 11 }}>T2 예측 부분 완료 — {t1Slices.length - predFailCount}장 성공 / {predFailCount}장 실패</span>
         )}
         {predStatus === 'error' && (
           <span style={{ color: '#f87171', fontSize: 11 }}>T2 예측 실패 — 모델 상태를 확인하세요</span>
@@ -225,60 +258,95 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* 슬라이스 썸네일 */}
-        <SlicePanel slices={slices} currentIndex={currentIndex} onSelect={setCurrentIndex} />
+        <SlicePanel slices={refSlices} currentIndex={currentIndex} onSelect={setCurrentIndex} />
 
         <InfoPanel
-          patient={{ ...MRI_PATIENT, sliceCount: slices.length || MRI_PATIENT.sliceCount }}
+          patient={{ ...MRI_PATIENT, id: patientName || MRI_PATIENT.id, sliceCount: sliceCount || MRI_PATIENT.sliceCount }}
           sliceIndex={currentIndex}
-          sliceData={slices[currentIndex] ?? null}
+          sliceData={refSlices[currentIndex] ?? null}
         />
 
-        {/* 중앙: T1 원본 / T2 예측 나란히 비교 */}
+        {/* 중앙: T1 원본 / T2 원본 / T2 예측 3단 비교 */}
         <div
-          style={{ flex: 1, display: 'flex', borderRight: '1px solid #2a2a4a', overflow: 'hidden' }}
+          style={{ flex: 1, display: 'flex', borderRight: '1px solid #2a2a4a', overflow: 'hidden', position: 'relative' }}
           onWheel={handleWheel}
+          onDragOver={onCenterDragOver}
+          onDragLeave={onCenterDragLeave}
+          onDrop={onCenterDrop}
         >
-          <div style={{ flex: 1, borderRight: '1px solid #2a2a4a' }}>
-            <CTImageViewer
-              sliceData={slices[currentIndex] ?? null}
-              sliceIndex={currentIndex}
-              label="T1 원본"
-              accentColor="#81c784"
-              wc={wc} ww={ww} onWcWwChange={handleWcWwChange}
-              showToolbar
-              onCursorHU={setCursorInfo}
-            />
-          </div>
-          <div style={{ flex: 1 }}>
-            <CTImageViewer
-              sliceData={predSlices[currentIndex] ?? null}
-              sliceIndex={currentIndex}
-              label="T2 예측"
-              accentColor="#ce93d8"
-              wc={wc} ww={ww} onWcWwChange={handleWcWwChange}
-              showToolbar={false}
-              placeholder={predStatus === 'idle' && !predSlices[currentIndex]}
-              placeholderText="위의 'T2 예측 실행' 버튼을 눌러 생성"
-              pending={predPending}
-              pendingText="T2 생성 중..."
-              failed={predFailedSlice}
-              failedText="이 슬라이스는 예측 실패"
-            />
-          </div>
+          {!hasAnyData && !loading ? (
+            <div style={{
+              flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12,
+              border: dragOver ? '2px dashed #ce93d8' : '2px dashed transparent',
+              background: dragOver ? 'rgba(206,147,216,0.06)' : 'transparent',
+            }}>
+              <div style={{ fontSize: 40, opacity: 0.5 }}>📂</div>
+              <div style={{ color: '#888', fontSize: 13 }}>환자 폴더를 여기로 드래그하거나</div>
+              <FolderUpload onFilesSelected={loadPatientFiles} disabled={loading} />
+              <div style={{ color: '#444', fontSize: 10, marginTop: 8, textAlign: 'center' }}>
+                폴더 안 파일명에 t1 / t2가 포함되어 있어야 원본으로 인식됩니다<br />
+                (예: Brats18_..._t1_0000.png, Brats18_..._t2_0000.png)
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ flex: 1, borderRight: '1px solid #2a2a4a' }}>
+                <CTImageViewer
+                  sliceData={t1Slices[currentIndex] ?? null}
+                  sliceIndex={currentIndex}
+                  label="T1 원본"
+                  accentColor="#81c784"
+                  wc={wc} ww={ww} onWcWwChange={handleWcWwChange}
+                  showToolbar
+                  placeholder={t1Slices.length === 0}
+                  placeholderText="업로드된 폴더에서 T1 파일을 찾지 못했습니다"
+                  onCursorHU={setCursorInfo}
+                />
+              </div>
+              <div style={{ flex: 1, borderRight: '1px solid #2a2a4a' }}>
+                <CTImageViewer
+                  sliceData={t2Slices[currentIndex] ?? null}
+                  sliceIndex={currentIndex}
+                  label="T2 원본"
+                  accentColor="#64b5f6"
+                  wc={wc} ww={ww} onWcWwChange={handleWcWwChange}
+                  showToolbar={false}
+                  placeholder={t2Slices.length === 0}
+                  placeholderText="업로드된 폴더에서 T2 파일을 찾지 못했습니다"
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <CTImageViewer
+                  sliceData={predSlices[currentIndex] ?? null}
+                  sliceIndex={currentIndex}
+                  label="T2 예측"
+                  accentColor="#ce93d8"
+                  wc={wc} ww={ww} onWcWwChange={handleWcWwChange}
+                  showToolbar={false}
+                  placeholder={predStatus === 'idle' && !predSlices[currentIndex]}
+                  placeholderText="위의 'T2 예측 실행' 버튼을 눌러 생성"
+                  pending={predPending}
+                  pendingText="T2 생성 중..."
+                  failed={predFailedSlice}
+                  failedText="이 슬라이스는 예측 실패"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ width: 280, flexShrink: 0, overflow: 'hidden' }}>
-          <VolumeRenderer3D slices={slices} sliceIndex={currentIndex} />
+          <VolumeRenderer3D slices={refSlices} sliceIndex={currentIndex} />
         </div>
       </div>
 
       {/* Footer */}
       <div style={{ height: 24, background: '#050510', borderTop: '1px solid #1a1a3a', display: 'flex', alignItems: 'center', padding: '0 12px', gap: 16, fontSize: 10, color: '#555', flexShrink: 0 }}>
-        <span>슬라이스: {currentIndex + 1}/{slices.length || '?'}</span>
+        <span>슬라이스: {sliceCount > 0 ? `${currentIndex + 1}/${sliceCount}` : '-'}</span>
         <span>|</span>
         <span>← → 키보드 또는 마우스 휠로 이동</span>
         <span>|</span>
-        <span>우클릭 드래그: 밝기/대비 조정 (양쪽 패널 공유)</span>
+        <span>우클릭 드래그: 밝기/대비 조정 (세 패널 공유)</span>
       </div>
     </div>
   );

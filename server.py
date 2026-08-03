@@ -5,12 +5,14 @@ MRI T1→T2 추론 독립 서버 (로컬 상시 구동용).
 
 폴더 구조:
     mri-server/
-    ├── server.py           ← 이 파일 (로컬 개발/구동용, 포트 8765)
-    ├── mri_infer_core.py   ← server.py / api/[...path].py 공용 추론 코어
-    ├── api/[...path].py    ← Vercel 서버리스 배포용 (동일 로직)
-    ├── mri_rf/             ← 모델 코드 + checkpoint.88.pt (placeholder)
-    └── patient_mri/        ← 환자별 슬라이스 PNG (지금은 p1의 T2 슬라이스를
-                               T1 원본 자리표시자로 사용 중)
+    ├── server.py           ← 이 파일 (별도 서버에서 상시 구동, 포트 8765)
+    ├── mri_infer_core.py   ← 추론 코어 (모델 로딩 + T1→T2 추론)
+    ├── mri_rf/             ← 모델 코드 + checkpoint.88.pt
+    └── patient_mri/        ← 환자별 슬라이스 PNG
+
+Vercel엔 프론트엔드(viewer-src)만 정적 배포되고, 이 서버는 별도로
+(로컬 PC/Railway/cloudflared 터널 등) 공개 URL로 띄운 뒤
+VITE_API_BASE 환경변수로 연결한다.
 
 실행:
     cd mri-server
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -43,6 +46,14 @@ core.ensure_model_load_started()
 
 class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # 클라이언트가 응답 도중 연결을 끊는 건 흔한 일이라(새로고침, 탭 닫기,
+        # 터널 재연결 등) 트레이스백으로 콘솔을 어지럽히지 않는다.
+        exc_type = sys.exc_info()[0]
+        if exc_type in (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            return
+        super().handle_error(request, client_address)
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -1,0 +1,12 @@
+{
+  "buildCommand": "cd viewer-src && npm install && npm run build",
+  "outputDirectory": "public",
+  "rewrites": [
+    { "source": "/mri/:filename", "destination": "/api/mri/:filename" }
+  ],
+  "functions": {
+    "api/[...path].py": {
+      "maxDuration": 60
+    }
+  }
+}

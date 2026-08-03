@@ -1,0 +1,17 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Model checkpoints — 200MB+, GitHub 100MB 파일 크기 제한을 넘어서 커밋하지 않음.
+# 로컬 개발용 checkpoint.*.pt는 mri_rf/ 안에 그대로 두고 쓰면 되고,
+# 배포본(Vercel)에서 실제 추론이 필요하면 Git LFS나 외부 스토리지(S3, HF Hub 등)에서
+# 받아오도록 구성해야 한다.
+mri_rf/*.pt
+mri_rf/*.pth
+
+# Node
+viewer-src/node_modules/
+
+# Vercel
+.vercel/

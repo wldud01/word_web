@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "mri-server"
+version = "0.1.0"
+description = "MRI T2→T1 inference server (standalone)"
+authors = ["wldud01 <yunjiyeong0106@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+pillow = ">=9.0"
+numpy = ">=1.24"
+einops = ">=0.6"
+timm = ">=0.9"
+tqdm = ">=4.60"
+torchdiffeq = ">=0.2.3"
+torch = {version = ">=2.0", source = "pytorch-cpu"}
+torchvision = {version = ">=0.15", source = "pytorch-cpu"}
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+secondary = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

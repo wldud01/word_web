@@ -159,8 +159,13 @@ export default function App() {
     const results = new Array(total).fill(null);
     setPredSlices([...results]);
 
+    // 지금 보고 있는 슬라이스부터 먼저 추론해서 바로 결과가 보이게 하고,
+    // 나머지는 순서대로 이어서 처리한다.
+    const order = Array.from({ length: total }, (_, k) => (currentIndex + k) % total);
+
+    let doneCount = 0;
     let failCount = 0;
-    for (let i = 0; i < total; i++) {
+    for (const i of order) {
       if (predCancelRef.current) break;
       try {
         const pngBlob = await sliceToBlob(t1Slices[i]);
@@ -173,15 +178,16 @@ export default function App() {
         const slice = await loadSliceFromBlob(await res.blob());
         results[i] = slice;
         setPredSlices([...results]);
-        setPredProgress(i + 1);
       } catch (e) {
         failCount++;
         setPredFailCount(failCount);
         console.error(`예측 슬라이스 ${i}:`, e.message);
       }
+      doneCount++;
+      setPredProgress(doneCount);
     }
     if (!predCancelRef.current) setPredStatus(failCount === total ? 'error' : 'done');
-  }, [t1Slices, predStatus]);
+  }, [t1Slices, predStatus, currentIndex]);
 
   const predPending = (predStatus === 'model_loading' || predStatus === 'predicting') && !predSlices[currentIndex];
   const predFailedSlice = (predStatus === 'done' || predStatus === 'error') && !predSlices[currentIndex];
@@ -229,11 +235,8 @@ export default function App() {
         )}
         {predStatus === 'predicting' && (
           <span style={{ color: '#ce93d8', fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-            T2 예측 중... {predProgress}/{t1Slices.length}
+            T2 예측 중... {predProgress}/{t1Slices.length} ({Math.round((predProgress / t1Slices.length) * 100)}%)
             {predFailCount > 0 && <span style={{ color: '#f87171' }}>({predFailCount}개 실패)</span>}
-            <span style={{ display: 'inline-block', width: 80, height: 4, background: '#2a2a4a', borderRadius: 2 }}>
-              <span style={{ display: 'block', width: `${(predProgress / t1Slices.length) * 100}%`, height: '100%', background: '#ce93d8', borderRadius: 2, transition: 'width 0.3s' }} />
-            </span>
           </span>
         )}
         {predStatus === 'done' && (
@@ -253,6 +256,21 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* 예측 진행률 — 눈에 잘 띄는 전체 폭 바 */}
+      {(predStatus === 'predicting' || predStatus === 'model_loading') && (
+        <div style={{ height: 4, background: '#0d0d22', flexShrink: 0 }}>
+          <div style={{
+            height: '100%',
+            width: predStatus === 'predicting' ? `${(predProgress / t1Slices.length) * 100}%` : '100%',
+            background: '#ce93d8',
+            opacity: predStatus === 'model_loading' ? 0.5 : 1,
+            animation: predStatus === 'model_loading' ? 'pulse 1.2s ease-in-out infinite' : 'none',
+            transition: 'width 0.2s linear',
+          }} />
+          <style>{`@keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.7; } }`}</style>
+        </div>
+      )}
 
       {/* Main layout */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
@@ -326,7 +344,7 @@ export default function App() {
                   placeholder={predStatus === 'idle' && !predSlices[currentIndex]}
                   placeholderText="위의 'T2 예측 실행' 버튼을 눌러 생성"
                   pending={predPending}
-                  pendingText="T2 생성 중..."
+                  pendingText={`T2 생성 중... (${predProgress}/${t1Slices.length})`}
                   failed={predFailedSlice}
                   failedText="이 슬라이스는 예측 실패"
                 />

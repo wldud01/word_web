@@ -6,7 +6,8 @@
   ],
   "functions": {
     "api/[...path].py": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "excludeFiles": "{viewer-src/**,public/**,mri_rf/**/__pycache__/**,mri_rf/**/*.pt,mri_rf/**/*.pth,.venv/**,server.py,README.md}"
     }
   }
 }

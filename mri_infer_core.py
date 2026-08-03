@@ -65,8 +65,12 @@ def _load_model() -> None:
         print(f"[INFO] T1→T2 모델 로딩 중: {CKPT_PATH}")
         pkg = torch.load(str(CKPT_PATH), map_location="cpu", weights_only=False)
         backbone = GeneratorSPADE(input_nc=WINDOW_SIZE, output_nc=WINDOW_SIZE)
+        # RectifiedFlow가 backbone을 `self.model`로 감싸면서 state_dict 키에
+        # "model." 접두사가 붙기 때문에, 체크포인트(F_yx, 접두사 없음)는
+        # 감싸기 전에 backbone에 직접 로드해야 한다. strict=True로 정확히
+        # 맞는 체크포인트인지 확인한다.
+        backbone.load_state_dict(pkg["F_yx"], strict=True)
         model = RectifiedFlow(backbone, data_normalize_fn=None, data_unnormalize_fn=None)
-        model.load_state_dict(pkg["F_yx"], strict=False)
         model.eval()
         MODEL = model
         print(f"[INFO] 모델 로드 완료 (params: {sum(p.numel() for p in model.parameters())/1e6:.1f}M)")

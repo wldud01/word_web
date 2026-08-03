@@ -12,31 +12,41 @@ MRI T1 슬라이스를 T2로 변환하는 독립 실행 서버입니다. 원본(
 
 ```
 mri-server/
-├── server.py           # Python 추론 서버 — 로컬 상시 구동용 (포트 8765)
-├── mri_infer_core.py   # server.py / api 서버리스 함수 공용 추론 코어
-├── api/[...path].py    # Vercel 서버리스 배포용 함수 (실험적)
-├── vercel.json         # Vercel 빌드/라우팅 설정
+├── server.py           # Python 추론 서버 — 별도 서버(로컬 PC/Railway 등)에서 상시 구동 (포트 8765)
+├── mri_infer_core.py   # server.py가 쓰는 추론 코어 (모델 로딩 + T1→T2 추론)
+├── vercel.json         # Vercel 빌드 설정 (프론트엔드 정적 배포 전용)
 ├── requirements.txt    # Python 패키지 목록
-├── viewer-src/         # 프론트엔드 소스 (React + Vite)
-├── public/             # 빌드된 프론트엔드 (server.py가 서빙)
+├── viewer-src/         # 프론트엔드 소스 (React + Vite) — Vercel에 배포되는 부분
+├── public/             # 빌드된 프론트엔드 (server.py가 로컬에서도 서빙 가능)
 ├── mri_rf/             # 모델 코드 + 체크포인트 (checkpoint.88.pt, git 미포함)
 └── patient_mri/        # 환자별 슬라이스 PNG (p1)
 ```
 
-## Vercel 배포에 대한 주의
+## 아키텍처: 프론트(Vercel) + 추론 서버(별도)
 
-체크포인트가 200MB가 넘고 PyTorch(CPU) 추론까지 필요해서, Vercel
-서버리스 함수의 크기/실행시간 제한에 걸릴 가능성이 높은 실험적 구조입니다.
-또한 체크포인트 파일은 GitHub 100MB 제한 때문에 저장소에 커밋하지
-않았으므로, 배포된 함수에서는 모델이 로드되지 않고 "체크포인트 없음"
-상태로 남습니다 (로컬 `server.py`에서는 정상 동작). 실제로 배포에서도
-추론이 되게 하려면 Git LFS나 외부 스토리지(S3, Hugging Face Hub 등)에서
-체크포인트를 받아오도록 `mri_infer_core.py`를 수정해야 합니다.
+체크포인트가 200MB, PyTorch(CPU) 설치본이 1GB 이상이라 Vercel Python
+서버리스 함수 크기 제한(500MB)을 구조적으로 넘어섭니다. (`uv`가 torch를
+설치한 뒤 함수 번들 크기가 1.85GB로 나와 배포 자체가 실패하는 것을
+실제로 확인했습니다 — Python 함수로 이 추론을 올리는 건 불가능합니다.)
+
+그래서 이 저장소는 **프론트엔드만 Vercel에 정적 배포**하고, 추론
+서버(`server.py`)는 사용자의 PC나 Railway/Render 같은 별도 서버에서
+상시 구동하는 구조로 나눴습니다. 프론트는 빌드 시 환경변수
+`VITE_API_BASE`에 지정된 URL로 API를 호출합니다 (`viewer-src/src/lib/api.js`).
+
+### Vercel 프로젝트에 설정할 환경변수
+
+- `VITE_API_BASE` = 추론 서버의 공개 URL (예: `https://your-mri-server.example.com`)
+  - Vercel 대시보드 → Project Settings → Environment Variables에서 추가 후 재배포.
+  - 비워두면(로컬 개발 시) 상대 경로로 요청하며, `vite.config.js`의 프록시가
+    `localhost:8765`(`server.py`)로 전달합니다.
+- 추론 서버(`server.py`)는 이미 모든 응답에 `Access-Control-Allow-Origin: *`을
+  붙이므로, Vercel(다른 origin)에서 호출해도 CORS 문제 없이 동작합니다.
 
 > `pyproject.toml`(Poetry)은 제거했습니다 — Vercel의 Python 빌더가
 > `pyproject.toml`을 발견하면 `[project]` 테이블이 있는 PEP 621 형식으로
 > 간주하고 `uv lock`을 시도하는데, Poetry 형식과 충돌해 빌드가 실패했습니다.
-> 의존성은 이제 `requirements.txt` 하나로만 관리합니다.
+> (지금은 Python 함수 자체를 안 쓰지만, `requirements.txt`는 로컬 설치용으로 남겨둠.)
 
 ## 사전 조건
 

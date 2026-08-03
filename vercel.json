@@ -1,13 +1,4 @@
 {
   "buildCommand": "cd viewer-src && npm install && npm run build",
-  "outputDirectory": "public",
-  "rewrites": [
-    { "source": "/mri/:filename", "destination": "/api/mri/:filename" }
-  ],
-  "functions": {
-    "api/[...path].py": {
-      "maxDuration": 60,
-      "excludeFiles": "{viewer-src/**,public/**,mri_rf/**/__pycache__/**,mri_rf/**/*.pt,mri_rf/**/*.pth,.venv/**,server.py,README.md}"
-    }
-  }
+  "outputDirectory": "public"
 }

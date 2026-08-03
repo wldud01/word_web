@@ -1,3 +1,5 @@
+import { apiUrl } from './api';
+
 // { data: Int16Array, width, height } → PNG Blob (서버 POST용)
 export function sliceToBlob(slice) {
   return new Promise((resolve) => {
@@ -55,13 +57,13 @@ export async function loadMRISlice(url) {
 // Load all MRI slices from server with progress callback
 // onProgress(done, total, partialSlices)
 export async function loadAllMRISlices(onProgress) {
-  const res = await fetch('/api/mri-slices');
-  if (!res.ok) throw new Error('MRI 슬라이스 목록을 불러올 수 없어요 (server.py가 실행 중인지 확인)');
+  const res = await fetch(apiUrl('/api/mri-slices'));
+  if (!res.ok) throw new Error('MRI 슬라이스 목록을 불러올 수 없어요 (추론 서버가 실행 중인지 확인)');
   const { files } = await res.json();
 
   const slices = [];
   for (let i = 0; i < files.length; i++) {
-    const slice = await loadMRISlice(`/mri/${files[i]}`);
+    const slice = await loadMRISlice(apiUrl(`/mri/${files[i]}`));
     slices.push(slice);
     onProgress?.(i + 1, files.length, slices);
   }

@@ -5,6 +5,7 @@ import CTImageViewer from './components/CTImageViewer';
 import VolumeRenderer3D from './components/VolumeRenderer3D';
 import { loadAllMRISlices, loadSliceFromBlob, sliceToBlob } from './lib/mriLoader';
 import { MRI_PATIENT } from './lib/mockData';
+import { apiUrl } from './lib/api';
 
 // 참고: patient_mri/p1의 슬라이스는 원래 T2 PNG지만, 진짜 T1 원본이 준비되기
 // 전까지 "T1 원본" 자리표시자로 쓰고 있다. 예측 체크포인트도 마찬가지로
@@ -41,7 +42,7 @@ export default function App() {
   useEffect(() => {
     const poll = async () => {
       try {
-        const res = await fetch('/api/status');
+        const res = await fetch(apiUrl('/api/status'));
         if (res.ok) {
           const data = await res.json();
           if (data.model_ready) {
@@ -135,7 +136,7 @@ export default function App() {
       if (predCancelRef.current) break;
       try {
         const pngBlob = await sliceToBlob(slices[i]);
-        const res = await fetch('/api/infer-t1', {
+        const res = await fetch(apiUrl('/api/infer-t1'), {
           method: 'POST',
           headers: { 'Content-Type': 'image/png' },
           body: pngBlob,

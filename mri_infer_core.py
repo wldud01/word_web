@@ -59,12 +59,12 @@ def _load_model() -> None:
     try:
         import torch
         sys.path.insert(0, str(MRI_RF_DIR))
-        from rectified_flow_pytorch.backbone.mk_unet_img_attn_sup import MKRF_UNet
+        from rectified_flow_pytorch.backbone.CycleGanSPADE import GeneratorSPADE
         from rectified_flow_pytorch.rectified_flow_5_pred_img_attn_sup_seg_regis import RectifiedFlow
 
         print(f"[INFO] T1→T2 모델 로딩 중: {CKPT_PATH}")
         pkg = torch.load(str(CKPT_PATH), map_location="cpu", weights_only=False)
-        backbone = MKRF_UNet(in_channels=WINDOW_SIZE, out_channels=WINDOW_SIZE, model=3)
+        backbone = GeneratorSPADE(input_nc=WINDOW_SIZE, output_nc=WINDOW_SIZE)
         model = RectifiedFlow(backbone, data_normalize_fn=None, data_unnormalize_fn=None)
         model.load_state_dict(pkg["F_yx"], strict=False)
         model.eval()

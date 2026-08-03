@@ -15,7 +15,7 @@ mri-server/
 ├── server.py           # Python 추론 서버 — 별도 서버(로컬 PC/Railway 등)에서 상시 구동 (포트 8765)
 ├── mri_infer_core.py   # server.py가 쓰는 추론 코어 (모델 로딩 + T1→T2 추론)
 ├── vercel.json         # Vercel 빌드 설정 (프론트엔드 정적 배포 전용)
-├── requirements.txt    # Python 패키지 목록
+├── requirements-local.txt  # Python 패키지 목록 (로컬 server.py 실행용)
 ├── viewer-src/         # 프론트엔드 소스 (React + Vite) — Vercel에 배포되는 부분
 ├── public/             # 빌드된 프론트엔드 (server.py가 로컬에서도 서빙 가능)
 ├── mri_rf/             # 모델 코드 + 체크포인트 (checkpoint.88.pt, git 미포함)
@@ -46,7 +46,10 @@ mri-server/
 > `pyproject.toml`(Poetry)은 제거했습니다 — Vercel의 Python 빌더가
 > `pyproject.toml`을 발견하면 `[project]` 테이블이 있는 PEP 621 형식으로
 > 간주하고 `uv lock`을 시도하는데, Poetry 형식과 충돌해 빌드가 실패했습니다.
-> (지금은 Python 함수 자체를 안 쓰지만, `requirements.txt`는 로컬 설치용으로 남겨둠.)
+> 같은 이유로 `requirements.txt`도 저장소 루트에 그대로 두면 Vercel이
+> `/api` 함수가 하나도 없는데도 Python 프로젝트로 인식해서 `uv pip install`을
+> 실행하려다 실패했습니다 — 그래서 `requirements-local.txt`로 이름을 바꿔
+> Vercel의 자동 감지에서 제외했습니다 (로컬 `server.py` 실행에는 그대로 사용).
 
 ## 사전 조건
 
@@ -82,7 +85,7 @@ cd ..
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-local.txt
 ```
 
 ---

@@ -1,0 +1,18 @@
+# vercel --prod는 .gitignore를 항상 따르지 않아서 별도로 명시.
+# 이 프로젝트는 프론트엔드(viewer-src)만 배포하면 되고, 아래 항목들은
+# 업로드에 필요 없음 (특히 체크포인트는 100MB 제한을 넘어서 반드시 제외해야 함).
+
+.venv/
+__pycache__/
+*.pyc
+
+mri_rf/*.pt
+mri_rf/*.pth
+
+viewer-src/node_modules/
+
+.vercel
+.env*
+
+patient_mri/
+public/

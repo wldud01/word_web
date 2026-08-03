@@ -15,3 +15,6 @@ viewer-src/node_modules/
 
 # Vercel
 .vercel/
+
+.vercel
+.env*

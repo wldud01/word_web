@@ -6,7 +6,7 @@ const RENDER_MODES = [
   { key: 'xray',    label: 'X-Ray'},
 ];
 
-const CANVAS_SIZE = 240;
+const CANVAS_SIZE = 160;
 
 export default function VolumeRenderer3D({ slices, sliceIndex = 0 }) {
   const canvasRef  = useRef(null);
@@ -74,14 +74,13 @@ export default function VolumeRenderer3D({ slices, sliceIndex = 0 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#050510' }}>
       {/* 모드 버튼 */}
-      <div style={{ padding: '5px 8px', background: '#0d0d1a', borderBottom: '1px solid #2a2a4a', display: 'flex', alignItems: 'center', gap: 5 }}>
-        <span style={{ fontSize: 10, color: '#666', marginRight: 2 }}>3D</span>
+      <div style={{ padding: '4px 6px', background: '#0d0d1a', borderBottom: '1px solid #2a2a4a', display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
         {RENDER_MODES.map(m => (
           <button
             key={m.key}
             onClick={() => setRenderMode(m.key)}
             style={{
-              fontSize: 10, padding: '2px 7px', borderRadius: 3, cursor: 'pointer',
+              fontSize: 9, padding: '2px 6px', borderRadius: 3, cursor: 'pointer',
               background: renderMode === m.key ? '#2a1a4a' : 'transparent',
               color:      renderMode === m.key ? '#ce93d8' : '#555',
               border:     renderMode === m.key ? '1px solid #5a3a8a' : '1px solid #2a2a4a',
@@ -90,7 +89,6 @@ export default function VolumeRenderer3D({ slices, sliceIndex = 0 }) {
             {m.label}
           </button>
         ))}
-        <span style={{ marginLeft: 'auto', fontSize: 9, color: '#333' }}>드래그 회전</span>
       </div>
 
       {/* 캔버스 */}

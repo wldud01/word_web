@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import SlicePanel from './components/SlicePanel';
 import InfoPanel from './components/InfoPanel';
 import CTImageViewer from './components/CTImageViewer';
-import VolumeRenderer3D from './components/VolumeRenderer3D';
 import FolderUpload from './components/FolderUpload';
 import { loadFilesAsSlices, loadSliceFromBlob, sliceToBlob } from './lib/mriLoader';
 import { classifyByModality, filesFromDataTransferItems, folderNameFromFiles } from './lib/patientFolder';
@@ -282,6 +281,7 @@ export default function App() {
           patient={{ ...MRI_PATIENT, id: patientName || MRI_PATIENT.id, sliceCount: sliceCount || MRI_PATIENT.sliceCount }}
           sliceIndex={currentIndex}
           sliceData={refSlices[currentIndex] ?? null}
+          slices={refSlices}
         />
 
         {/* 중앙: T1 원본 / T2 원본 / T2 예측 3단 비교 */}
@@ -351,10 +351,6 @@ export default function App() {
               </div>
             </>
           )}
-        </div>
-
-        <div style={{ width: 280, flexShrink: 0, overflow: 'hidden' }}>
-          <VolumeRenderer3D slices={refSlices} sliceIndex={currentIndex} />
         </div>
       </div>
 

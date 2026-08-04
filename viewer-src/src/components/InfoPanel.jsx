@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { computePixelStats } from '../lib/mockData';
+import VolumeRenderer3D from './VolumeRenderer3D';
 
-export default function InfoPanel({ patient, sliceIndex, sliceData }) {
+export default function InfoPanel({ patient, sliceIndex, sliceData, slices }) {
   const stats = useMemo(() => {
     if (!sliceData) return null;
     return computePixelStats(sliceData.data);
@@ -20,7 +21,7 @@ export default function InfoPanel({ patient, sliceIndex, sliceData }) {
       </div>
 
       {/* Slice stats */}
-      <div style={{ padding: '10px 12px', flex: 1 }}>
+      <div style={{ padding: '10px 12px', flexShrink: 0 }}>
         <div style={{ color: '#ce93d8', fontSize: 12, fontWeight: 'bold', marginBottom: 8 }}>슬라이스 정보</div>
         <div style={row}><span style={lbl}>슬라이스 #</span><span style={val}>{sliceIndex + 1} / {patient.sliceCount}</span></div>
         <div style={row}><span style={lbl}>위치</span><span style={val}>{(sliceIndex * patient.sliceThickness).toFixed(1)} mm</span></div>
@@ -50,6 +51,11 @@ export default function InfoPanel({ patient, sliceIndex, sliceData }) {
             </div>
           </>
         )}
+      </div>
+
+      {/* 남는 공간에 3D 렌더링을 작게 끼워넣음 */}
+      <div style={{ flex: 1, minHeight: 140, borderTop: '1px solid #2a2a4a', overflow: 'hidden' }}>
+        <VolumeRenderer3D slices={slices} sliceIndex={sliceIndex} />
       </div>
     </div>
   );

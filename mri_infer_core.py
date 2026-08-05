@@ -18,9 +18,11 @@ forward pass로 쓰는 모델이다: `G(t1, cond=t1, seg=t1)` — 실제 배포 
 from __future__ import annotations
 
 import io
+import os
 import sys
 import threading
 import traceback
+import urllib.request
 from pathlib import Path
 
 from PIL import Image
@@ -29,6 +31,12 @@ BASE       = Path(__file__).parent
 MRI_DIR    = BASE / "patient_mri"
 MRI_RF_DIR = BASE / "mri_rf"
 CKPT_PATH  = MRI_RF_DIR / "checkpoint.88.pt"
+
+# Vercel 서버리스 함수처럼 저장소에 체크포인트를 못 담는 환경에서는
+# CHECKPOINT_URL(예: Hugging Face Hub의 파일 URL)에서 받아와 /tmp에 캐싱한다.
+# 로컬(server.py)에서는 CKPT_PATH가 이미 존재하므로 다운로드가 필요 없다.
+CKPT_URL        = os.environ.get("CHECKPOINT_URL")
+CKPT_CACHE_PATH = Path(os.environ.get("CHECKPOINT_CACHE_DIR", "/tmp")) / "checkpoint.88.pt"
 
 IMAGE_SIZE  = 256
 WINDOW_SIZE = 1
@@ -54,19 +62,37 @@ def ensure_model_load_started() -> None:
     threading.Thread(target=_load_model, daemon=True).start()
 
 
+def _resolve_ckpt_path() -> Path | None:
+    if CKPT_PATH.exists():
+        return CKPT_PATH
+    if CKPT_CACHE_PATH.exists() and CKPT_CACHE_PATH.stat().st_size > 0:
+        return CKPT_CACHE_PATH
+    if CKPT_URL:
+        print(f"[INFO] 체크포인트 다운로드 중: {CKPT_URL}")
+        CKPT_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = CKPT_CACHE_PATH.with_suffix(".tmp")
+        urllib.request.urlretrieve(CKPT_URL, tmp_path)
+        tmp_path.rename(CKPT_CACHE_PATH)
+        print(f"[INFO] 체크포인트 다운로드 완료 ({CKPT_CACHE_PATH.stat().st_size/1e6:.1f}MB)")
+        return CKPT_CACHE_PATH
+    return None
+
+
 def _load_model() -> None:
     global MODEL, _model_error
-    if not CKPT_PATH.exists():
-        _model_error = f"체크포인트 없음: {CKPT_PATH}"
-        print(f"[WARN] {_model_error}")
-        return
     try:
+        ckpt_path = _resolve_ckpt_path()
+        if ckpt_path is None:
+            _model_error = f"체크포인트 없음: {CKPT_PATH} (CHECKPOINT_URL도 설정되지 않음)"
+            print(f"[WARN] {_model_error}")
+            return
+
         import torch
         sys.path.insert(0, str(MRI_RF_DIR))
         from rectified_flow_pytorch.backbone.CycleGanSPADE import GeneratorSPADE
 
-        print(f"[INFO] T1→T2 모델 로딩 중: {CKPT_PATH}")
-        pkg = torch.load(str(CKPT_PATH), map_location="cpu", weights_only=False)
+        print(f"[INFO] T1→T2 모델 로딩 중: {ckpt_path}")
+        pkg = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         model = GeneratorSPADE(input_nc=WINDOW_SIZE, output_nc=WINDOW_SIZE)
         # F_xy = 정방향(T1→T2). strict=True로 정확히 맞는 체크포인트인지 확인한다.
         model.load_state_dict(pkg["F_xy"], strict=True)

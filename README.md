@@ -12,44 +12,45 @@ MRI T1 슬라이스를 T2로 변환하는 독립 실행 서버입니다. 원본(
 
 ```
 mri-server/
-├── server.py           # Python 추론 서버 — 별도 서버(로컬 PC/Railway 등)에서 상시 구동 (포트 8765)
-├── mri_infer_core.py   # server.py가 쓰는 추론 코어 (모델 로딩 + T1→T2 추론)
-├── vercel.json         # Vercel 빌드 설정 (프론트엔드 정적 배포 전용)
-├── requirements-local.txt  # Python 패키지 목록 (로컬 server.py 실행용)
-├── viewer-src/         # 프론트엔드 소스 (React + Vite) — Vercel에 배포되는 부분
-├── public/             # 빌드된 프론트엔드 (server.py가 로컬에서도 서빙 가능)
+├── server.py           # Python 추론 서버 — 로컬 상시 구동용 (포트 8765)
+├── mri_infer_core.py   # server.py / api 서버리스 함수 공용 추론 코어
+├── api/[...path].py    # Vercel 서버리스 함수 (프론트+백엔드 한 프로젝트로 배포)
+├── vercel.json         # Vercel 빌드/함수 설정
+├── requirements.txt    # Python 패키지 목록 (pillow, numpy, torch만 — 최소 구성)
+├── Dockerfile           # (선택) Docker로 별도 호스팅하고 싶을 때용
+├── viewer-src/         # 프론트엔드 소스 (React + Vite)
+├── public/             # 빌드된 프론트엔드
 ├── mri_rf/             # 모델 코드 + 체크포인트 (checkpoint.88.pt, git 미포함)
 └── patient_mri/        # 환자별 슬라이스 PNG (p1)
 ```
 
-## 아키텍처: 프론트(Vercel) + 추론 서버(별도)
+## 아키텍처: Vercel 하나로 프론트+백엔드
 
-체크포인트가 200MB, PyTorch(CPU) 설치본이 1GB 이상이라 Vercel Python
-서버리스 함수 크기 제한(500MB)을 구조적으로 넘어섭니다. (`uv`가 torch를
-설치한 뒤 함수 번들 크기가 1.85GB로 나와 배포 자체가 실패하는 것을
-실제로 확인했습니다 — Python 함수로 이 추론을 올리는 건 불가능합니다.)
+`GeneratorSPADE`(단일 forward pass, RectifiedFlow 미사용)로 바꾸면서
+실제 필요한 패키지가 `pillow`/`numpy`/`torch` 세 개뿐으로 줄었고, Vercel의
+["Large Functions"](https://vercel.com/docs/functions/limitations#large-functions-beta)
+(서버리스 함수 크기 한도를 500MB→5GB로 올리는 옵트인 기능)를 켜면 torch
+설치본도 그 안에 들어갑니다. 그래서 지금은 `api/[...path].py` 하나로
+프론트엔드와 추론 백엔드를 **같은 Vercel 프로젝트**에서 서빙합니다.
 
-그래서 이 저장소는 **프론트엔드만 Vercel에 정적 배포**하고, 추론
-서버(`server.py`)는 사용자의 PC나 Railway/Render 같은 별도 서버에서
-상시 구동하는 구조로 나눴습니다. 프론트는 빌드 시 환경변수
-`VITE_API_BASE`에 지정된 URL로 API를 호출합니다 (`viewer-src/src/lib/api.js`).
+체크포인트(379MB)는 GitHub 100MB 제한 때문에 이 저장소엔 못 올리므로,
+**Hugging Face Hub(Model 저장소, 파일 저장 전용— Space/컴퓨트 아님)** 에
+올려두고 `CHECKPOINT_URL` 환경변수로 그 다운로드 링크를 알려주면,
+서버리스 함수가 콜드 스타트 시 `/tmp`로 받아서 캐싱합니다
+(`mri_infer_core.py`의 `_resolve_ckpt_path`).
 
 ### Vercel 프로젝트에 설정할 환경변수
 
-- `VITE_API_BASE` = 추론 서버의 공개 URL (예: `https://your-mri-server.example.com`)
-  - Vercel 대시보드 → Project Settings → Environment Variables에서 추가 후 재배포.
-  - 비워두면(로컬 개발 시) 상대 경로로 요청하며, `vite.config.js`의 프록시가
-    `localhost:8765`(`server.py`)로 전달합니다.
-- 추론 서버(`server.py`)는 이미 모든 응답에 `Access-Control-Allow-Origin: *`을
-  붙이므로, Vercel(다른 origin)에서 호출해도 CORS 문제 없이 동작합니다.
+- `VERCEL_SUPPORT_LARGE_FUNCTIONS` = `1` — 5GB 함수 크기 한도 활성화 (필수)
+- `CHECKPOINT_URL` = Hugging Face Hub의 체크포인트 직접 다운로드 URL
+  (예: `https://huggingface.co/<user>/<repo>/resolve/main/checkpoint.88.pt`)
+
+로컬 `server.py`는 `mri_rf/checkpoint.88.pt`가 이미 디스크에 있으면 그걸
+그대로 쓰고, `CHECKPOINT_URL`은 신경 쓸 필요 없습니다.
 
 > `pyproject.toml`(Poetry)은 제거했습니다 — Vercel의 Python 빌더가
 > `pyproject.toml`을 발견하면 `[project]` 테이블이 있는 PEP 621 형식으로
 > 간주하고 `uv lock`을 시도하는데, Poetry 형식과 충돌해 빌드가 실패했습니다.
-> 같은 이유로 `requirements.txt`도 저장소 루트에 그대로 두면 Vercel이
-> `/api` 함수가 하나도 없는데도 Python 프로젝트로 인식해서 `uv pip install`을
-> 실행하려다 실패했습니다 — 그래서 `requirements-local.txt`로 이름을 바꿔
-> Vercel의 자동 감지에서 제외했습니다 (로컬 `server.py` 실행에는 그대로 사용).
 
 ## 사전 조건
 
@@ -85,7 +86,7 @@ cd ..
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements-local.txt
+pip install -r requirements.txt
 ```
 
 ---
@@ -120,12 +121,9 @@ python3 server.py
 
 **모델 오류가 헤더에 뜨는 경우**
 
-패키지가 누락된 것입니다. 아래 명령으로 추가 설치:
-
-```bash
-source .venv/bin/activate
-pip install timm einops einx torchdiffeq networkx hyper-connections scipy lpips
-```
+`pillow`/`numpy`/`torch` 설치가 안 됐거나(`pip install -r requirements.txt`),
+`mri_rf/checkpoint.88.pt`가 없는 경우입니다. 헤더의 정확한 오류 메시지를
+확인하세요.
 
 **포트 충돌 (8765 이미 사용 중)**
 

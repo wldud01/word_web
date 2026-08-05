@@ -4,8 +4,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements-local.txt .
-RUN pip install --no-cache-dir -r requirements-local.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY mri_infer_core.py server.py ./
 COPY mri_rf ./mri_rf

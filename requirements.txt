@@ -1,0 +1,9 @@
+# GeneratorSPADE 자체는 pillow/numpy/torch만 있으면 되지만,
+# rectified_flow_pytorch/__init__.py가 다른 backbone 모듈들을 무조건
+# import하면서 timm/torchvision을 끌고 온다 (mri_rf/rectified_flow_pytorch/backbone/mk_unet_baseline.py 등).
+pillow>=9.0
+numpy>=1.24
+timm>=0.9
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0
+torchvision>=0.15

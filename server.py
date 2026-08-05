@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -34,7 +35,8 @@ import mri_infer_core as core
 
 BASE       = Path(__file__).parent
 PUBLIC_DIR = BASE / "public"
-PORT       = 8765
+PORT       = int(os.environ.get("PORT", 8765))
+HOST       = os.environ.get("HOST", "localhost")
 
 if core.MRI_PATHS:
     print(f"[INFO] MRI 슬라이스: {len(core.MRI_PATHS)}장")
@@ -169,15 +171,23 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("localhost", PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"\n{'='*50}")
     print(f"  MRI T1→T2 서버 (placeholder checkpoint)")
-    print(f"  http://localhost:{PORT}")
+    print(f"  http://{HOST}:{PORT}")
     print(f"  슬라이스: {len(core.MRI_PATHS)}장  |  모델: {core.CKPT_PATH.name}")
     print(f"{'='*50}\n")
 
-    import webbrowser
-    threading.Timer(1.5, lambda: webbrowser.open(f"http://localhost:{PORT}")).start()
+    # 헤드리스 환경(Docker/HF Spaces)에서는 브라우저가 없어 실패할 수 있으니
+    # 조용히 무시한다.
+    if os.environ.get("MRI_SERVER_NO_BROWSER") != "1":
+        import webbrowser
+        def _try_open():
+            try:
+                webbrowser.open(f"http://localhost:{PORT}")
+            except Exception:
+                pass
+        threading.Timer(1.5, _try_open).start()
 
     try:
         server.serve_forever()

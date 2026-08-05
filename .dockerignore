@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+*.pyc
+viewer-src
+public
+node_modules
+.vercel
+.env*

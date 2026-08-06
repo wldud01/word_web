@@ -106,6 +106,10 @@ class handler(BaseHTTPRequestHandler):
 
         if sub == "status":
             core.ensure_model_load_started()
+            # 서버리스 환경에선 요청 사이에 백그라운드 스레드가 이어서 돈다는 보장이
+            # 없어서, 이 요청 안에서 다운로드+로딩이 끝날 때까지(최대 maxDuration 여유
+            # 안에서) 기다린 뒤 상태를 보고한다.
+            core.wait_for_model_ready(timeout=260)
             self._send_json(200, core.model_status())
             return
 

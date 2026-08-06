@@ -3,7 +3,7 @@
   "outputDirectory": "public",
   "functions": {
     "api/[...path].py": {
-      "maxDuration": 60,
+      "maxDuration": 280,
       "excludeFiles": "{viewer-src/**,public/**,mri_rf/**/__pycache__/**,mri_rf/**/*.pt,mri_rf/**/*.pth,.venv/**,server.py,Dockerfile,.dockerignore,README.md}"
     }
   }

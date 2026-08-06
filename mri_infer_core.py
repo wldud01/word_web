@@ -115,6 +115,17 @@ def model_status() -> dict:
     }
 
 
+def wait_for_model_ready(timeout: int = 50) -> None:
+    """서버리스 환경용: 에러를 던지지 않고 최대 timeout초까지 로딩 완료(또는 실패)를
+    기다리기만 한다. 백그라운드 스레드가 요청 사이에 이어서 실행된다는 보장이 없는
+    환경(Vercel Functions)에서, 한 요청 안에서 다운로드+로딩이 끝날 기회를 준다."""
+    import time
+    waited = 0
+    while MODEL is None and _model_error is None and waited < timeout:
+        time.sleep(1)
+        waited += 1
+
+
 def _wait_for_model(timeout: int = 300) -> None:
     import time
     waited = 0
